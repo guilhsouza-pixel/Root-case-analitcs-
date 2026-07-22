@@ -45,6 +45,10 @@ O banco `root_cause_analytics.db` é criado automaticamente na primeira execuç�
 3. Selecione o repositório, a branch e indique `app.py` como arquivo principal.
 4. Clique em **Deploy**.
 
+## Publicar na Vercel
+
+O projeto inclui `Dockerfile.vercel` para executar o Streamlit em um contêiner. O SQLite é gravado em `/tmp` quando a variável `VERCEL` está presente, evitando escrita no código empacotado. Esse armazenamento é temporário; use PostgreSQL/Supabase para manter projetos e planos de ação entre reinicializações.
+
 ### Observação sobre SQLite na nuvem
 
 O SQLite funciona normalmente durante a sessão. Entretanto, no Streamlit Community Cloud, o disco do contêiner não é armazenamento permanente e pode ser recriado. Para uso corporativo com histórico compartilhado, substitua a persistência por PostgreSQL/Supabase. A análise de planilhas e o download dos relatórios continuam funcionando sem essa mudança.
@@ -55,6 +59,8 @@ O SQLite funciona normalmente durante a sessão. Entretanto, no Streamlit Commun
 root_cause_analytics/
 ├── .streamlit/config.toml
 ├── app.py
+├── Dockerfile.vercel
+├── vercel.json
 ├── core/
 │   ├── analytics.py
 │   ├── database.py

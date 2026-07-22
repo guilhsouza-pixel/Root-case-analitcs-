@@ -3,4 +3,4 @@ __pycache__/
 .venv/
 *.pyc
 root_cause_analytics.db
-
+.vercel/

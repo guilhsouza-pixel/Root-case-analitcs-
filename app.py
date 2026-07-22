@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from io import BytesIO
 from pathlib import Path
 
@@ -41,7 +42,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-DB_PATH = Path(__file__).with_name("root_cause_analytics.db")
+DB_PATH = Path("/tmp/root_cause_analytics.db") if os.getenv("VERCEL") else Path(__file__).with_name("root_cause_analytics.db")
 db = Database(DB_PATH)
 
 
