@@ -617,7 +617,9 @@ def render_dmaic_coordinator(project: str) -> None:
                 st.rerun()
 
     with st.expander("2. Registro de evidências", expanded=False):
-        with st.form("coordinator_evidence"):
+        evidence_form_revision_key = "coordinator_evidence_form_revision"
+        evidence_form_revision = st.session_state.get(evidence_form_revision_key, 0)
+        with st.form(f"coordinator_evidence_{project}_{phase}_{evidence_form_revision}"):
             e1, e2 = st.columns(2)
             evidence_id = e1.text_input("ID da evidência", placeholder="E1")
             classification = e2.selectbox("Classificação", ["FATO", "CÁLCULO", "ESTIMATIVA", "HIPÓTESE", "RECOMENDAÇÃO", "A CONFIRMAR"])
@@ -634,17 +636,19 @@ def render_dmaic_coordinator(project: str) -> None:
                     source=source.strip() or None,
                 ))
                 db.save_evidence_registry(project, evidence)
+                st.session_state[evidence_form_revision_key] = evidence_form_revision + 1
                 st.success("Evidência salva.")
                 st.rerun()
 
-        if evidence.all():
+        visible_evidence = evidence.visible(phase)
+        if visible_evidence:
             evidence_frame = pd.DataFrame([{
                 "ID": item.id,
                 "Classificação": item.classification,
                 "Liberar em": item.available_from_phase,
                 "Descrição": item.text,
                 "Fonte": item.source or "",
-            } for item in evidence.all()])
+            } for item in visible_evidence])
             st.dataframe(evidence_frame, use_container_width=True, hide_index=True)
 
     coordinator = DMAICCoordinator(state, evidence, store=db)

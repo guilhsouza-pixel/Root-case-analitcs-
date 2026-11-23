@@ -33,11 +33,12 @@ class GateResult:
         return [x for x in self.findings if x.severity == "BLOCKER"]
 
 
-def _present(payload: dict, key: str) -> bool:
-    value = payload.get(key)
+def _has_value(value: object) -> bool:
     if isinstance(value, str):
-        return bool(value.strip())
-    return value is not None and value != [] and value != {}
+        return value.strip().casefold() not in {"", "a confirmar"}
+    if isinstance(value, list):
+        return any(_has_value(item) for item in value)
+    return value is not None and value != {}
 
 
 def validate_evidence_labels(items: Iterable[dict]) -> list[GateFinding]:
@@ -153,12 +154,15 @@ def validate_statistical_governance(payload: dict) -> list[GateFinding]:
     return findings
 
 
-def validate_cause(cause: dict) -> list[GateFinding]:
-    findings: list[GateFinding] = []
+def validate_cause(cause: dict, phase: str | None = None) -> list[GateFinding]:
     status = str(cause.get("status", "HIPÓTESE")).upper().strip()
-    if status in {"VALIDADA", "CAUSA RAIZ", "CONFIRMADA"} and not cause.get("evidence"):
-        findings.append(GateFinding("CAUSE_WITHOUT_EVIDENCE", "BLOCKER", "Uma causa não pode ser validada sem evidência observável ou mensurável."))
-    return findings
+    if status not in {"VALIDADA", "CAUSA RAIZ", "CONFIRMADA"}:
+        return []
+    if phase == "DEFINE":
+        return [GateFinding("CAUSE_CONFIRMED_IN_DEFINE", "BLOCKER", "A confirmação de causa raiz pertence à etapa Analyze e exige evidência.")]
+    if not cause.get("evidence"):
+        return [GateFinding("CAUSE_WITHOUT_EVIDENCE", "BLOCKER", "Uma causa não pode ser validada sem evidência observável ou mensurável.")]
+    return []
 
 
 def validate_phase(phase: str, payload: dict) -> GateResult:
@@ -178,7 +182,7 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
     findings.extend(validate_baseline_alignment(payload))
     findings.extend(validate_statistical_governance(payload))
     for cause in payload.get("causes", []):
-        findings.extend(validate_cause(cause))
+        findings.extend(validate_cause(cause, phase))
 
     if phase == "DEFINE":
         for key, label in [
@@ -187,17 +191,17 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
             ("primary_indicator", "indicador primário"),
             ("team_roles", "papéis principais"),
         ]:
-            if not _present(payload, key):
+            if not _has_value(payload.get(key)):
                 findings.append(GateFinding("DEFINE_MISSING_" + key.upper(), "BLOCKER", f"Define sem {label} suficiente."))
 
         if payload.get("uses_future_result"):
             findings.append(GateFinding("FUTURE_INFORMATION_LEAK", "BLOCKER", "O Define está usando resultado que só seria conhecido em fase posterior."))
 
-        if payload.get("numeric_target") is not None and not _present(payload, "baseline"):
+        if _has_value(payload.get("numeric_target")) and not _has_value(payload.get("baseline")):
             findings.append(GateFinding("TARGET_WITHOUT_BASELINE", "BLOCKER", "Meta numérica não deve ser validada sem baseline medido ou fonte equivalente."))
 
-        if payload.get("solution_committed") is True:
-            findings.append(GateFinding("SOLUTION_IN_DEFINE", "BLOCKER", "A solução não deve ser tratada como definida dentro da declaração do problema."))
+        if payload.get("solution_committed") is True or _has_value(payload.get("selected_improvement")):
+            findings.append(GateFinding("SOLUTION_IN_DEFINE", "BLOCKER", "A seleção da solução pertence à etapa Improve."))
 
     elif phase == "MEASURE":
         for key, label in [
@@ -206,28 +210,28 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
             ("data_source", "fonte de dados"),
             ("baseline", "baseline"),
         ]:
-            if not _present(payload, key):
+            if not _has_value(payload.get(key)):
                 findings.append(GateFinding("MEASURE_MISSING_" + key.upper(), "BLOCKER", f"Measure sem {label} suficiente."))
 
         if payload.get("measurement_system_required") and not payload.get("measurement_system_checked"):
             findings.append(GateFinding("MSA_PENDING", "BLOCKER", "O sistema de medição precisa ser verificado antes de usar os dados como baseline."))
 
     elif phase == "ANALYZE":
-        if not _present(payload, "analysis_question"):
+        if not _has_value(payload.get("analysis_question")):
             findings.append(GateFinding("ANALYZE_NO_QUESTION", "BLOCKER", "Analyze precisa declarar a pergunta que está sendo testada."))
-        if not _present(payload, "evidence"):
+        if not _has_value(payload.get("evidence")):
             findings.append(GateFinding("ANALYZE_NO_EVIDENCE", "BLOCKER", "Analyze precisa registrar evidência para sustentar a decisão."))
         if payload.get("forced_tool"):
             findings.append(GateFinding("FORCED_TOOL", "BLOCKER", "Ferramenta não deve ser obrigatória apenas por pertencer ao catálogo."))
 
     elif phase == "IMPROVE":
-        if not _present(payload, "selected_improvement"):
+        if not _has_value(payload.get("selected_improvement")):
             findings.append(GateFinding("IMPROVE_NO_SOLUTION", "BLOCKER", "Improve precisa registrar a melhoria selecionada."))
-        if payload.get("pilot_required") and not _present(payload, "pilot_evidence"):
+        if payload.get("pilot_required") and not _has_value(payload.get("pilot_evidence")):
             findings.append(GateFinding("IMPROVE_PILOT_PENDING", "BLOCKER", "A melhoria exige piloto/teste antes da implementação em escala."))
-        if payload.get("high_risk") and not _present(payload, "risk_assessment"):
+        if payload.get("high_risk") and not _has_value(payload.get("risk_assessment")):
             findings.append(GateFinding("IMPROVE_RISK_ASSESSMENT_PENDING", "BLOCKER", "Melhoria de alto risco exige avaliação de riscos antes da implementação."))
-        if not _present(payload, "implementation_evidence"):
+        if not _has_value(payload.get("implementation_evidence")):
             findings.append(GateFinding("IMPROVE_NO_IMPLEMENTATION_EVIDENCE", "BLOCKER", "Implementação precisa de evidência de execução ou teste."))
 
     elif phase == "CONTROL":
@@ -237,9 +241,9 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
             ("frequency", "frequência"),
             ("reaction_plan", "plano de reação"),
         ]:
-            if not _present(payload, key):
+            if not _has_value(payload.get(key)):
                 findings.append(GateFinding("CONTROL_MISSING_" + key.upper(), "BLOCKER", f"Control sem {label}."))
-        if payload.get("result_claimed") and not _present(payload, "sustainment_evidence"):
+        if payload.get("result_claimed") and not _has_value(payload.get("sustainment_evidence")):
             findings.append(GateFinding("CONTROL_NO_SUSTAINMENT", "BLOCKER", "Resultado sustentado exige evidência de acompanhamento após implementação."))
 
     return GateResult(phase, not any(x.severity == "BLOCKER" for x in findings), findings)

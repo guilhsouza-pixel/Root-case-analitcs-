@@ -1,8 +1,17 @@
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
+from core.database import Database
+
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
+
+
+@pytest.fixture(autouse=True)
+def isolated_database(tmp_path, monkeypatch):
+    database_path = tmp_path / "coordinator.sqlite"
+    monkeypatch.setattr("core.database.Database", lambda _: Database(database_path))
 
 
 def _assert_no_exceptions(app):
@@ -114,11 +123,16 @@ def test_megatech_ui_keeps_measure_evidence_hidden_in_define():
 
     inputs["ID da evidência"].set_value("M1")
     areas["Descrição da evidência"].set_value("Quantidade/capacidade medida na fase Measure.")
+    inputs["Fonte / referência"].set_value("Fonte sintética de Medir")
     selects["Classificação"].set_value("CÁLCULO")
     selects["Liberar a partir da fase"].set_value("MEASURE")
     [b for b in app.button if b.label == "Adicionar / atualizar evidência"][0].click()
     app.run()
     _assert_no_exceptions(app)
+
+    assert {item.label: item.value for item in app.text_input}["ID da evidência"] == ""
+    assert {item.label: item.value for item in app.text_input}["Fonte / referência"] == ""
+    assert {item.label: item.value for item in app.text_area}["Descrição da evidência"] == ""
 
     [b for b in app.button if b.label == "Avaliar gate"][0].click()
     app.run()
@@ -130,3 +144,6 @@ def test_megatech_ui_keeps_measure_evidence_hidden_in_define():
     assert metrics["Evidências liberadas"] == "1"
     assert metrics["Evidências futuras bloqueadas"] == "1"
     assert metrics["Pendências visíveis"] == "0"
+
+    evidence_table = app.dataframe[0].value
+    assert evidence_table["ID"].tolist() == ["D1"]

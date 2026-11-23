@@ -1,3 +1,5 @@
+import pytest
+
 from core.dmaic_validator import validate_phase
 
 
@@ -29,6 +31,41 @@ def test_define_blocks_numeric_target_without_baseline():
     })
     assert not result.ready
     assert "TARGET_WITHOUT_BASELINE" in codes(result)
+
+
+@pytest.mark.parametrize(("extra", "blocker"), [
+    ({"causes": [{"status": "CAUSA RAIZ", "evidence": "Referência de teste"}]},
+     "CAUSE_CONFIRMED_IN_DEFINE"),
+    ({"selected_improvement": "Alternativa de teste já escolhida"}, "SOLUTION_IN_DEFINE"),
+    ({"baseline": "A confirmar", "numeric_target": 0}, "TARGET_WITHOUT_BASELINE"),
+    ({"team_roles": ["A confirmar"]}, "DEFINE_MISSING_TEAM_ROLES"),
+])
+def test_define_blocks_premature_claims_and_unconfirmed_required_fields(extra, blocker):
+    result = validate_phase("DEFINE", {
+        "problem_statement": "Ocorrência registrada em uma estação de teste.",
+        "scope": "Manuseio na estação afetada.",
+        "primary_indicator": "Ocorrências por período.",
+        "team_roles": ["líder", "responsável pelo processo"],
+        **extra,
+    })
+
+    assert not result.ready
+    assert blocker in codes(result)
+
+
+def test_define_allows_hypothesis_and_explicit_zero_baseline():
+    result = validate_phase("DEFINE", {
+        "problem_statement": "Ocorrência registrada em uma estação de teste.",
+        "scope": "Manuseio na estação afetada.",
+        "primary_indicator": "Ocorrências recorrentes por período.",
+        "team_roles": ["responsável pelo processo", "A confirmar"],
+        "causes": [{"status": "HIPÓTESE"}],
+        "selected_improvement": "A confirmar",
+        "baseline": 0,
+        "numeric_target": 0,
+    })
+
+    assert result.ready
 
 
 def test_analyze_accepts_lean_validation_without_ishikawa():
