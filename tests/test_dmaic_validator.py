@@ -191,3 +191,57 @@ def test_unknown_phase_is_blocked():
     result = validate_phase("DESIGN", {})
     assert not result.ready
     assert "UNKNOWN_PHASE" in codes(result)
+
+
+def test_capability_claim_requires_stability_and_spec_source():
+    result = validate_phase("MEASURE", {
+        "primary_indicator": "dimensão",
+        "measurement_definition": "medição por peça",
+        "data_source": "sistema de medição",
+        "baseline": 10,
+        "capability_claimed": True,
+    })
+    assert not result.ready
+    assert "CAPABILITY_WITHOUT_STABILITY" in codes(result)
+    assert "SPEC_LIMITS_UNVERIFIED" in codes(result)
+
+
+def test_observed_min_max_cannot_be_used_as_specification_limits():
+    result = validate_phase("MEASURE", {
+        "primary_indicator": "dimensão",
+        "measurement_definition": "medição por peça",
+        "data_source": "sistema de medição",
+        "baseline": 10,
+        "capability_claimed": True,
+        "process_stability_checked": True,
+        "specification_limits_source": "requisito do produto",
+        "spec_limits_from_observed_min_max": True,
+    })
+    assert not result.ready
+    assert "OBSERVED_RANGE_USED_AS_SPEC" in codes(result)
+
+
+def test_control_chart_claim_requires_method():
+    result = validate_phase("CONTROL", {
+        "control_indicator": "processo",
+        "owner": "Process Owner",
+        "frequency": "diária",
+        "reaction_plan": "reagir a causa especial",
+        "control_chart_claimed": True,
+    })
+    assert not result.ready
+    assert "CONTROL_CHART_METHOD_REQUIRED" in codes(result)
+
+
+def test_capability_governance_passes_when_requirements_are_met():
+    result = validate_phase("MEASURE", {
+        "primary_indicator": "dimensão",
+        "measurement_definition": "medição por peça",
+        "data_source": "sistema de medição validado",
+        "baseline": 10,
+        "capability_claimed": True,
+        "process_stability_checked": True,
+        "specification_limits_source": "desenho/requisito de engenharia",
+        "spec_limits_from_observed_min_max": False,
+    })
+    assert result.ready
