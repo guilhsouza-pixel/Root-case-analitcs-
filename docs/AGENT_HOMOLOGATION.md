@@ -8,7 +8,7 @@ Homologação parcial do Coordenador/Validador DMAIC em desenvolvimento.
 
 ### Resultado executado
 
-- 54 testes aprovados no GitHub Actions após inclusão do Coordenador e persistência
+- 57 testes aprovados no GitHub Actions após inclusão do Coordenador, persistência e validação da interface
 - 0 falhas na suíte automatizada
 - GitHub Actions executando em PR/push
 - Coordenador ponta a ponta implementado em primeira versão
@@ -153,3 +153,18 @@ Comportamentos comprovados:
 
 Limite atual:
 - em ambiente Vercel, o SQLite fica em `/tmp` e não é armazenamento persistente entre instâncias. Para produção será necessário banco durável.
+
+
+## Validação da interface — Megatech
+
+A página `Coordenador DMAIC — beta` foi validada com Streamlit AppTest.
+
+Critérios aprovados:
+- abertura sem exceções;
+- projeto vazio resulta em gate Bloqueado;
+- preenchimento do mínimo de Define pela interface resulta em gate Pronto;
+- evidência de Define fica liberada;
+- evidência cadastrada como disponível a partir de Measure permanece oculta em Define;
+- contadores de evidências liberadas/bloqueadas refletem a cronologia.
+
+Resultado automatizado desta rodada: **57 passed**.
