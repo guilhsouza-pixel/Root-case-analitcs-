@@ -61,6 +61,66 @@ def validate_benefit(benefit: dict) -> list[GateFinding]:
     return findings
 
 
+
+
+def validate_benefit_set(benefits: list[dict]) -> list[GateFinding]:
+    findings: list[GateFinding] = []
+    groups: dict[str, list[dict]] = {}
+    for benefit in benefits:
+        group = str(benefit.get("double_count_group", "")).strip()
+        if group and benefit.get("direct_saving") is True:
+            groups.setdefault(group, []).append(benefit)
+    for group, members in groups.items():
+        if len(members) > 1:
+            findings.append(GateFinding(
+                "FINANCIAL_DOUBLE_COUNT",
+                "BLOCKER",
+                f"Mais de um saving direto deriva da mesma redução ({group}); revisar dupla contagem.",
+            ))
+    return findings
+
+
+def validate_premise_conflicts(conflicts: Iterable[dict]) -> list[GateFinding]:
+    findings: list[GateFinding] = []
+    for conflict in conflicts:
+        if conflict.get("resolved"):
+            continue
+        if conflict.get("material", True):
+            findings.append(GateFinding(
+                "UNRESOLVED_MATERIAL_PREMISE",
+                "BLOCKER",
+                "Há premissas materiais conflitantes ainda não reconciliadas.",
+            ))
+        else:
+            findings.append(GateFinding(
+                "UNRESOLVED_MINOR_PREMISE",
+                "WARNING",
+                "Há premissa conflitante não material ainda pendente.",
+            ))
+    return findings
+
+
+def validate_indicator_role(payload: dict) -> list[GateFinding]:
+    role = str(payload.get("primary_indicator_role", "")).lower().strip()
+    if role in {"driver", "x", "diagnostic", "process driver"}:
+        return [GateFinding(
+            "PRIMARY_INDICATOR_IS_DRIVER",
+            "BLOCKER",
+            "O indicador primário deve representar o problema/resultado (Y); drivers de processo podem ser indicadores diagnósticos ou secundários.",
+        )]
+    return []
+
+
+def validate_baseline_alignment(payload: dict) -> list[GateFinding]:
+    if payload.get("baseline_aligned_to_primary_indicator") is False:
+        return [GateFinding(
+            "BASELINE_INDICATOR_MISMATCH",
+            "BLOCKER",
+            "O baseline informado não mede o mesmo indicador primário do projeto.",
+        )]
+    return []
+
+
 def validate_cause(cause: dict) -> list[GateFinding]:
     findings: list[GateFinding] = []
     status = str(cause.get("status", "HIPÓTESE")).upper().strip()
@@ -77,8 +137,13 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
         return GateResult(phase, False, [GateFinding("UNKNOWN_PHASE", "BLOCKER", "Fase DMAIC inválida.")])
 
     findings.extend(validate_evidence_labels(payload.get("evidence_items", [])))
-    for benefit in payload.get("benefits", []):
+    benefits = payload.get("benefits", [])
+    for benefit in benefits:
         findings.extend(validate_benefit(benefit))
+    findings.extend(validate_benefit_set(benefits))
+    findings.extend(validate_premise_conflicts(payload.get("premise_conflicts", [])))
+    findings.extend(validate_indicator_role(payload))
+    findings.extend(validate_baseline_alignment(payload))
     for cause in payload.get("causes", []):
         findings.extend(validate_cause(cause))
 
@@ -125,6 +190,10 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
     elif phase == "IMPROVE":
         if not _present(payload, "selected_improvement"):
             findings.append(GateFinding("IMPROVE_NO_SOLUTION", "BLOCKER", "Improve precisa registrar a melhoria selecionada."))
+        if payload.get("pilot_required") and not _present(payload, "pilot_evidence"):
+            findings.append(GateFinding("IMPROVE_PILOT_PENDING", "BLOCKER", "A melhoria exige piloto/teste antes da implementação em escala."))
+        if payload.get("high_risk") and not _present(payload, "risk_assessment"):
+            findings.append(GateFinding("IMPROVE_RISK_ASSESSMENT_PENDING", "BLOCKER", "Melhoria de alto risco exige avaliação de riscos antes da implementação."))
         if not _present(payload, "implementation_evidence"):
             findings.append(GateFinding("IMPROVE_NO_IMPLEMENTATION_EVIDENCE", "BLOCKER", "Implementação precisa de evidência de execução ou teste."))
 
