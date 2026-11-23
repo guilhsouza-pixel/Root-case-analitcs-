@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from core.dmaic_state import PHASES, ProjectState
 from core.dmaic_validator import GateFinding, validate_phase
@@ -26,9 +27,31 @@ class CoordinationResult:
 
 
 class DMAICCoordinator:
-    def __init__(self, state: ProjectState, evidence: EvidenceRegistry | None = None) -> None:
+    def __init__(
+        self,
+        state: ProjectState,
+        evidence: EvidenceRegistry | None = None,
+        store: Any | None = None,
+    ) -> None:
         self.state = state
         self.evidence = evidence or EvidenceRegistry()
+        self.store = store
+
+    def _record(self, event: str, **details: Any) -> None:
+        self.state.record(event, **details)
+        if self.store is not None:
+            self.store.append_coordinator_history(
+                self.state.project,
+                self.state.phase,
+                event,
+                details,
+            )
+
+    def _persist(self) -> None:
+        if self.store is None:
+            return
+        self.store.save_project_state(self.state)
+        self.store.save_evidence_registry(self.state.project, self.evidence)
 
     def evaluate(self) -> CoordinationResult:
         phase = self.state.phase
@@ -60,24 +83,46 @@ class DMAICCoordinator:
             hidden_evidence_count=len(self.evidence.hidden(phase)),
             pending_evidence_ids=[item.id for item in pending],
         )
-        self.state.record(
+        self._record(
             "gate_evaluated",
             status=status,
             next_phase=next_phase,
             blockers=[item.code for item in gate.blockers],
             tools=[item.tool for item in tools],
         )
+        self._persist()
         return result
 
     def advance(self) -> CoordinationResult:
         result = self.evaluate()
         if result.blocked:
-            self.state.record("advance_blocked", blockers=[item.code for item in result.findings if item.severity == "BLOCKER"])
+            self._record(
+                "advance_blocked",
+                blockers=[
+                    item.code
+                    for item in result.findings
+                    if item.severity == "BLOCKER"
+                ],
+            )
+            self._persist()
             return result
 
         if result.next_phase is None:
-            self.state.record("dmaic_completed", status=result.status)
+            self._record("dmaic_completed", status=result.status)
+            self._persist()
             return result
 
+        previous_phase = self.state.phase
         self.state.move_to(result.next_phase)
+        if self.store is not None:
+            self.store.append_coordinator_history(
+                self.state.project,
+                self.state.phase,
+                "phase_changed",
+                {
+                    "previous_phase": previous_phase,
+                    "new_phase": self.state.phase,
+                },
+            )
+        self._persist()
         return self.evaluate()
