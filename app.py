@@ -441,11 +441,32 @@ def render_actions(project: str) -> None:
 
 
 DMAIC_ITEMS = {
-    "DEFINE": ["Problema", "Contexto", "Meta SMART", "Escopo", "Fora do escopo", "Cliente", "CTQ", "Equipe", "Cronograma", "SIPOC"],
-    "MEASURE": ["Indicador principal", "Fórmula", "Baseline", "Meta", "Fonte", "Frequência", "Validação dos dados"],
-    "ANALYZE": ["Pareto", "Estratificação", "Ishikawa", "5 Porquês", "Hipóteses", "Causas validadas", "Causas descartadas"],
-    "IMPROVE": ["Soluções", "Matriz esforço × impacto", "Teste piloto", "5W2H", "Resultado do piloto", "Riscos"],
-    "CONTROL": ["Indicadores", "Meta de controle", "Responsável", "Frequência", "Plano de reação", "Padronização", "Auditoria", "Lições aprendidas"],
+    "DEFINE": [
+        "Problema / oportunidade", "Impacto no negócio", "Objetivo / meta",
+        "Indicador primário", "Escopo", "Fora do escopo", "VOC / CTQs",
+        "Equipe e responsabilidades", "Restrições e premissas",
+        "Cronograma preliminar", "Processo / SIPOC quando aplicável",
+    ],
+    "MEASURE": [
+        "Indicador primário", "Definição operacional", "Fonte dos dados",
+        "Baseline", "Plano de coleta", "Qualidade / sistema de medição",
+        "Estratificação necessária", "Variação observada", "Pendências de medição",
+    ],
+    "ANALYZE": [
+        "Pergunta de análise", "Hipóteses", "Evidências",
+        "Ferramentas utilizadas e justificativa", "Achados", "Limitações",
+        "Causas validadas", "Causas descartadas", "Decisão apoiada",
+    ],
+    "IMPROVE": [
+        "Alternativas de melhoria", "Critério de seleção", "Melhoria selecionada",
+        "Avaliação de riscos", "Piloto / teste quando aplicável",
+        "Resultado do piloto", "Implementação", "Indicadores de equilíbrio",
+    ],
+    "CONTROL": [
+        "Indicador de controle", "Meta / faixa de controle", "Responsável",
+        "Frequência", "Evidência de sustentação", "Plano de reação",
+        "Padronização", "Validação financeira quando aplicável", "Lições aprendidas",
+    ],
 }
 
 
