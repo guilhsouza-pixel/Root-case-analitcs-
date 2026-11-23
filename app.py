@@ -22,6 +22,9 @@ from core.analytics import (
     trend_frame,
 )
 from core.database import Database
+from core.dmaic_coordinator import DMAICCoordinator
+from core.dmaic_state import PHASES, ProjectState
+from core.evidence_registry import EvidenceItem
 from core.report import build_pdf
 from core.schema import CANONICAL_FIELDS, suggest_mapping
 
@@ -520,7 +523,158 @@ def render_report(df: pd.DataFrame, project: str, filters: list[str]) -> None:
     st.download_button("Baixar dados filtrados em CSV", csv, file_name="dados_filtrados.csv", mime="text/csv")
 
 
-PAGES = ["Importação", "Visão executiva", "Ocorrências", "Pareto", "Estratificação", "Tendências", "Capabilidade", "Ishikawa — 6M", "5 Porquês", "Matriz causa e efeito", "FMEA", "Plano 5W2H", "DMAIC", "Antes × depois", "Esforço × impacto", "Relatório"]
+
+def render_dmaic_coordinator(project: str) -> None:
+    st.header("Coordenador DMAIC — beta")
+    st.caption("O Coordenador avalia a fase, libera apenas evidências permitidas, recomenda ferramentas pelo contexto e bloqueia avanço quando existe falha crítica.")
+
+    state = db.load_project_state(project) or ProjectState(project)
+    evidence = db.load_evidence_registry(project)
+    phase = state.phase
+    payload = state.payload()
+
+    a, b, c = st.columns(3)
+    a.metric("Fase atual", phase)
+    b.metric("Fases concluídas", len(state.completed_phases))
+    c.metric("Evidências cadastradas", len(evidence.all()))
+
+    with st.expander("1. Dados estruturados da fase", expanded=True):
+        with st.form(f"coordinator_phase_{phase}"):
+            values = {}
+            if phase == "DEFINE":
+                values["problem_statement"] = st.text_area("Problema / oportunidade", value=str(payload.get("problem_statement", "")))
+                values["scope"] = st.text_area("Escopo", value=str(payload.get("scope", "")))
+                values["primary_indicator"] = st.text_input("Indicador primário (Y)", value=str(payload.get("primary_indicator", "")))
+                team_default = ", ".join(payload.get("team_roles", [])) if isinstance(payload.get("team_roles"), list) else str(payload.get("team_roles", ""))
+                team_text = st.text_input("Equipe / papéis principais", value=team_default, help="Separe por vírgulas.")
+                values["team_roles"] = [x.strip() for x in team_text.split(",") if x.strip()]
+                values["multi_interface_process"] = st.checkbox("Processo com múltiplas interfaces — considerar SIPOC", value=bool(payload.get("multi_interface_process", False)))
+                values["customer_requirements_needed"] = st.checkbox("Necessário detalhar VOC / CTQs", value=bool(payload.get("customer_requirements_needed", False)))
+                values["solution_committed"] = st.checkbox("Solução já está sendo tratada como definida", value=bool(payload.get("solution_committed", False)), help="O validador deve bloquear isso em Define quando for antecipação.")
+
+            elif phase == "MEASURE":
+                values["primary_indicator"] = st.text_input("Indicador primário (Y)", value=str(payload.get("primary_indicator", "")))
+                values["measurement_definition"] = st.text_area("Definição operacional da medição", value=str(payload.get("measurement_definition", "")))
+                values["data_source"] = st.text_input("Fonte dos dados", value=str(payload.get("data_source", "")))
+                values["baseline"] = st.text_input("Baseline", value=str(payload.get("baseline", "")))
+                values["measurement_system_required"] = st.checkbox("MSA / validação do sistema de medição é necessária", value=bool(payload.get("measurement_system_required", False)))
+                values["measurement_system_checked"] = st.checkbox("Sistema de medição já foi verificado", value=bool(payload.get("measurement_system_checked", False)))
+                values["needs_stratification"] = st.checkbox("Estratificação necessária", value=bool(payload.get("needs_stratification", False)))
+                values["needs_pareto"] = st.checkbox("Pareto necessário", value=bool(payload.get("needs_pareto", False)))
+
+            elif phase == "ANALYZE":
+                values["analysis_question"] = st.text_area("Pergunta de análise", value=str(payload.get("analysis_question", "")))
+                analysis_options = ["evidence_review", "technical_validation", "cause_exploration", "hypothesis_test", "regression"]
+                current = str(payload.get("analysis_type", "evidence_review"))
+                values["analysis_type"] = st.selectbox("Tipo de análise", analysis_options, index=analysis_options.index(current) if current in analysis_options else 0)
+                values["evidence"] = st.text_area("Evidência principal usada na decisão", value=str(payload.get("evidence", "")))
+                values["forced_tool"] = st.checkbox("Ferramenta imposta sem justificativa contextual", value=bool(payload.get("forced_tool", False)))
+
+            elif phase == "IMPROVE":
+                values["selected_improvement"] = st.text_area("Melhoria selecionada", value=str(payload.get("selected_improvement", "")))
+                values["multiple_alternatives"] = st.checkbox("Existem alternativas concorrentes", value=bool(payload.get("multiple_alternatives", False)))
+                values["pilot_required"] = st.checkbox("Piloto necessário", value=bool(payload.get("pilot_required", False)))
+                values["pilot_evidence"] = st.text_area("Evidência do piloto", value=str(payload.get("pilot_evidence", "")))
+                values["high_risk"] = st.checkbox("Mudança de alto risco", value=bool(payload.get("high_risk", False)))
+                values["risk_assessment"] = st.text_area("Avaliação de riscos", value=str(payload.get("risk_assessment", "")))
+                values["implementation_evidence"] = st.text_area("Evidência de implementação", value=str(payload.get("implementation_evidence", "")))
+
+            elif phase == "CONTROL":
+                values["control_indicator"] = st.text_input("Indicador de controle", value=str(payload.get("control_indicator", "")))
+                values["owner"] = st.text_input("Responsável", value=str(payload.get("owner", "")))
+                values["frequency"] = st.text_input("Frequência", value=str(payload.get("frequency", "")))
+                values["reaction_plan"] = st.text_area("Plano de reação", value=str(payload.get("reaction_plan", "")))
+                values["result_claimed"] = st.checkbox("Resultado está sendo declarado como sustentado", value=bool(payload.get("result_claimed", False)))
+                values["sustainment_evidence"] = st.text_area("Evidência de sustentação", value=str(payload.get("sustainment_evidence", "")))
+                values["control_chart_claimed"] = st.checkbox("Usar CEP como evidência de estabilidade", value=bool(payload.get("control_chart_claimed", False)))
+                values["control_chart_method"] = st.text_input("Tipo/método da carta de controle", value=str(payload.get("control_chart_method", "")))
+
+            if st.form_submit_button("Salvar dados da fase", type="primary"):
+                state.update_payload(values)
+                db.save_project_state(state)
+                st.success("Dados estruturados da fase salvos.")
+                st.rerun()
+
+    with st.expander("2. Registro de evidências", expanded=False):
+        with st.form("coordinator_evidence"):
+            e1, e2 = st.columns(2)
+            evidence_id = e1.text_input("ID da evidência", placeholder="E1")
+            classification = e2.selectbox("Classificação", ["FATO", "CÁLCULO", "ESTIMATIVA", "HIPÓTESE", "RECOMENDAÇÃO", "A CONFIRMAR"])
+            text_value = st.text_area("Descrição da evidência")
+            e3, e4 = st.columns(2)
+            available_phase = e3.selectbox("Liberar a partir da fase", list(PHASES), index=list(PHASES).index(phase))
+            source = e4.text_input("Fonte / referência")
+            if st.form_submit_button("Adicionar / atualizar evidência") and evidence_id.strip() and text_value.strip():
+                evidence.upsert(EvidenceItem(
+                    id=evidence_id.strip(),
+                    text=text_value.strip(),
+                    classification=classification,
+                    available_from_phase=available_phase,
+                    source=source.strip() or None,
+                ))
+                db.save_evidence_registry(project, evidence)
+                st.success("Evidência salva.")
+                st.rerun()
+
+        if evidence.all():
+            evidence_frame = pd.DataFrame([{
+                "ID": item.id,
+                "Classificação": item.classification,
+                "Liberar em": item.available_from_phase,
+                "Descrição": item.text,
+                "Fonte": item.source or "",
+            } for item in evidence.all()])
+            st.dataframe(evidence_frame, use_container_width=True, hide_index=True)
+
+    coordinator = DMAICCoordinator(state, evidence, store=db)
+    result_key = f"coordinator_result_{project}"
+    last_result = st.session_state.get(result_key)
+    if last_result is not None and last_result.phase != state.phase:
+        last_result = None
+
+    left, right = st.columns(2)
+    if left.button("Avaliar gate", type="primary", use_container_width=True):
+        last_result = coordinator.evaluate()
+        st.session_state[result_key] = last_result
+    if right.button("Tentar avançar fase", use_container_width=True):
+        last_result = coordinator.advance()
+        st.session_state[result_key] = last_result
+        st.rerun()
+
+    if last_result is not None:
+        status_label = {
+            "READY": "Pronto",
+            "READY_WITH_PENDING": "Pronto com pendências",
+            "BLOCKED": "Bloqueado",
+        }.get(last_result.status, last_result.status)
+        st.subheader(f"Gate: {status_label}")
+        g1, g2, g3 = st.columns(3)
+        g1.metric("Evidências liberadas", len(last_result.visible_evidence_ids))
+        g2.metric("Evidências futuras bloqueadas", last_result.hidden_evidence_count)
+        g3.metric("Pendências visíveis", len(last_result.pending_evidence_ids))
+
+        if last_result.findings:
+            st.markdown("**Achados do validador**")
+            for finding in last_result.findings:
+                icon = "⛔" if finding.severity == "BLOCKER" else "⚠️"
+                st.write(f"{icon} **{finding.code}** — {finding.message}")
+        else:
+            st.success("Nenhum bloqueio metodológico identificado nesta fase.")
+
+        st.markdown("**Ferramentas recomendadas pelo contexto**")
+        if last_result.tools:
+            for decision in last_result.tools:
+                st.write(f"- **{decision.tool}** — {decision.reason}")
+        else:
+            st.caption("Nenhuma ferramenta especializada adicional foi acionada.")
+
+        if last_result.next_phase:
+            st.caption(f"Próxima fase possível: {last_result.next_phase}")
+        elif phase == "CONTROL" and last_result.status != "BLOCKED":
+            st.caption("Control atende ao gate atual; o projeto pode seguir para encerramento/validação aplicável.")
+
+
+PAGES = ["Importação", "Visão executiva", "Ocorrências", "Pareto", "Estratificação", "Tendências", "Capabilidade", "Ishikawa — 6M", "5 Porquês", "Matriz causa e efeito", "FMEA", "Plano 5W2H", "DMAIC", "Coordenador DMAIC", "Antes × depois", "Esforço × impacto", "Relatório"]
 project = st.sidebar.text_input("Projeto", value=st.session_state.get("project", "Projeto Lean Six Sigma"))
 st.session_state.project = project
 page = st.sidebar.radio("Navegação", PAGES)
@@ -546,6 +700,7 @@ else:
         elif page == "FMEA": render_fmea(project)
         elif page == "Plano 5W2H": render_actions(project)
         elif page == "DMAIC": render_dmaic(project)
+        elif page == "Coordenador DMAIC": render_dmaic_coordinator(project)
         elif page == "Antes × depois": render_before_after(filtered)
         elif page == "Esforço × impacto": render_effort_impact()
         elif page == "Relatório": render_report(filtered, project, filter_labels)
