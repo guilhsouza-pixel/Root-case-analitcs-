@@ -104,3 +104,90 @@ def test_cost_avoidance_not_direct_saving():
     })
     assert not result.ready
     assert "FALSE_DIRECT_SAVING" in codes(result)
+
+
+def test_invalid_evidence_classification_is_blocked():
+    result = validate_phase("DEFINE", {
+        "problem_statement": "Problema",
+        "scope": "Escopo",
+        "primary_indicator": "Indicador Y",
+        "team_roles": ["líder"],
+        "evidence_items": [{"classification": "ACHISMO", "text": "não permitido"}],
+    })
+    assert not result.ready
+    assert "INVALID_EVIDENCE_STATE" in codes(result)
+
+
+def test_minor_premise_conflict_warns_but_does_not_block():
+    result = validate_phase("DEFINE", {
+        "problem_statement": "Problema",
+        "scope": "Escopo",
+        "primary_indicator": "Indicador Y",
+        "team_roles": ["líder"],
+        "premise_conflicts": [{
+            "topic": "detalhe secundário",
+            "resolved": False,
+            "material": False,
+        }],
+    })
+    assert result.ready
+    assert "UNRESOLVED_MINOR_PREMISE" in codes(result)
+
+
+def test_measure_blocks_required_msa_when_not_checked():
+    result = validate_phase("MEASURE", {
+        "primary_indicator": "dimensão medida",
+        "measurement_definition": "medição dimensional",
+        "data_source": "instrumento de medição",
+        "baseline": 10.0,
+        "measurement_system_required": True,
+        "measurement_system_checked": False,
+    })
+    assert not result.ready
+    assert "MSA_PENDING" in codes(result)
+
+
+def test_analyze_blocks_forced_tool():
+    result = validate_phase("ANALYZE", {
+        "analysis_question": "A hipótese é suportada pelos dados?",
+        "evidence": "dados disponíveis",
+        "forced_tool": True,
+    })
+    assert not result.ready
+    assert "FORCED_TOOL" in codes(result)
+
+
+def test_improve_passes_when_required_pilot_and_risk_are_evidenced():
+    result = validate_phase("IMPROVE", {
+        "selected_improvement": "Alteração validada",
+        "pilot_required": True,
+        "pilot_evidence": "Piloto concluído com critérios atendidos",
+        "high_risk": True,
+        "risk_assessment": "Riscos avaliados e controles definidos",
+        "implementation_evidence": "Mudança implementada",
+    })
+    assert result.ready
+
+
+def test_control_passes_with_sustainment_and_financial_evidence():
+    result = validate_phase("CONTROL", {
+        "control_indicator": "custo logístico",
+        "owner": "Process Owner",
+        "frequency": "mensal",
+        "reaction_plan": "acionar plano de reação se sair do limite",
+        "result_claimed": True,
+        "sustainment_evidence": "resultado estável no período de controle",
+        "benefits": [{
+            "type": "saving direto",
+            "status": "APROVADO FINANCEIRAMENTE",
+            "direct_saving": True,
+            "evidence": "validação do controller",
+        }],
+    })
+    assert result.ready
+
+
+def test_unknown_phase_is_blocked():
+    result = validate_phase("DESIGN", {})
+    assert not result.ready
+    assert "UNKNOWN_PHASE" in codes(result)
