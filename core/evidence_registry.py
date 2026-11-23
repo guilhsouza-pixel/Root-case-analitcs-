@@ -33,6 +33,13 @@ class EvidenceRegistry:
             raise ValueError(f"Evidência duplicada: {item.id}")
         self._items.append(item)
 
+    def upsert(self, item: EvidenceItem) -> None:
+        self._items = [existing for existing in self._items if existing.id != item.id]
+        self._items.append(item)
+
+    def remove(self, evidence_id: str) -> None:
+        self._items = [item for item in self._items if item.id != evidence_id]
+
     def all(self) -> list[EvidenceItem]:
         return list(self._items)
 
