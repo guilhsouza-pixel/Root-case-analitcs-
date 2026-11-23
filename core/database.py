@@ -36,6 +36,21 @@ CREATE TABLE IF NOT EXISTS dmaic (
   id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT, phase TEXT, item TEXT, content TEXT,
   completed INTEGER DEFAULT 0, updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS dmaic_projects (
+  project TEXT PRIMARY KEY, phase TEXT NOT NULL, phase_payloads TEXT NOT NULL,
+  completed_phases TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dmaic_evidence (
+  project TEXT NOT NULL, evidence_id TEXT NOT NULL, text TEXT NOT NULL,
+  classification TEXT NOT NULL, available_from_phase TEXT NOT NULL,
+  source TEXT, metadata TEXT NOT NULL DEFAULT '{}',
+  PRIMARY KEY(project, evidence_id)
+);
+CREATE TABLE IF NOT EXISTS dmaic_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, phase TEXT,
+  event TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -56,7 +71,7 @@ class Database:
             conn.commit()
 
     def dataframe(self, table: str, project: str | None = None) -> pd.DataFrame:
-        allowed = {"ishikawa", "why5", "fmea", "actions", "dmaic", "mappings"}
+        allowed = {"ishikawa", "why5", "fmea", "actions", "dmaic", "mappings", "dmaic_projects", "dmaic_evidence", "dmaic_history"}
         if table not in allowed:
             raise ValueError("Tabela inválida")
         with self.connect() as conn:
@@ -74,3 +89,102 @@ class Database:
         frame = self.dataframe("mappings")
         return {row["name"]: json.loads(row["payload"]) for _, row in frame.iterrows()}
 
+
+
+    def save_project_state(self, state) -> None:
+        self.execute(
+            """
+            INSERT INTO dmaic_projects(project, phase, phase_payloads, completed_phases, updated_at)
+            VALUES(?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(project) DO UPDATE SET
+              phase=excluded.phase,
+              phase_payloads=excluded.phase_payloads,
+              completed_phases=excluded.completed_phases,
+              updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                state.project,
+                state.phase,
+                json.dumps(state.phase_payloads, ensure_ascii=False),
+                json.dumps(state.completed_phases, ensure_ascii=False),
+            ),
+        )
+
+    def load_project_state(self, project: str):
+        from core.dmaic_state import ProjectState
+
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT project, phase, phase_payloads, completed_phases FROM dmaic_projects WHERE project=?",
+                (project,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ProjectState(
+            project=row["project"],
+            phase=row["phase"],
+            phase_payloads=json.loads(row["phase_payloads"]),
+            completed_phases=json.loads(row["completed_phases"]),
+        )
+
+    def save_evidence_registry(self, project: str, registry) -> None:
+        from core.evidence_registry import EvidenceItem
+
+        with self.connect() as conn:
+            for item in registry.all():
+                if not isinstance(item, EvidenceItem):
+                    raise TypeError("Registro de evidência inválido.")
+                conn.execute(
+                    """
+                    INSERT INTO dmaic_evidence(
+                      project, evidence_id, text, classification, available_from_phase, source, metadata
+                    ) VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(project, evidence_id) DO UPDATE SET
+                      text=excluded.text,
+                      classification=excluded.classification,
+                      available_from_phase=excluded.available_from_phase,
+                      source=excluded.source,
+                      metadata=excluded.metadata
+                    """,
+                    (
+                        project,
+                        item.id,
+                        item.text,
+                        item.classification,
+                        item.available_from_phase,
+                        item.source,
+                        json.dumps(item.metadata, ensure_ascii=False),
+                    ),
+                )
+            conn.commit()
+
+    def load_evidence_registry(self, project: str):
+        from core.evidence_registry import EvidenceItem, EvidenceRegistry
+
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT evidence_id, text, classification, available_from_phase, source, metadata
+                FROM dmaic_evidence
+                WHERE project=?
+                ORDER BY rowid
+                """,
+                (project,),
+            ).fetchall()
+        return EvidenceRegistry([
+            EvidenceItem(
+                id=row["evidence_id"],
+                text=row["text"],
+                classification=row["classification"],
+                available_from_phase=row["available_from_phase"],
+                source=row["source"],
+                metadata=json.loads(row["metadata"] or "{}"),
+            )
+            for row in rows
+        ])
+
+    def append_coordinator_history(self, project: str, phase: str, event: str, details: dict) -> None:
+        self.execute(
+            "INSERT INTO dmaic_history(project, phase, event, details) VALUES(?,?,?,?)",
+            (project, phase, event, json.dumps(details, ensure_ascii=False)),
+        )
