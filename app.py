@@ -440,7 +440,7 @@ def render_actions(project: str) -> None:
 DMAIC_ITEMS = {
     "DEFINE": ["Problema", "Contexto", "Meta SMART", "Escopo", "Fora do escopo", "Cliente", "CTQ", "Equipe", "Cronograma", "SIPOC"],
     "MEASURE": ["Indicador principal", "Fórmula", "Baseline", "Meta", "Fonte", "Frequência", "Validação dos dados"],
-    "ANALYZE": ["Pareto", "Estratificação", "Ishikawa", "5 Porquês", "Hipóteses", "Causas validadas", "Causas descartadas"],
+    "ANALYZE": ["Pergunta de análise", "Hipóteses", "Evidências", "Ferramentas utilizadas", "Achados", "Limitações", "Causas validadas", "Causas descartadas", "Decisão apoiada"],
     "IMPROVE": ["Soluções", "Matriz esforço × impacto", "Teste piloto", "5W2H", "Resultado do piloto", "Riscos"],
     "CONTROL": ["Indicadores", "Meta de controle", "Responsável", "Frequência", "Plano de reação", "Padronização", "Auditoria", "Lições aprendidas"],
 }
