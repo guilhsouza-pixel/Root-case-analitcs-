@@ -8,10 +8,11 @@ Homologação parcial do Coordenador/Validador DMAIC em desenvolvimento.
 
 ### Resultado executado
 
-- 41 testes executados localmente
-- 41 aprovados
-- 0 falhas
-- GitHub Actions configurado na branch para execução automática em PR/push
+- 54 testes aprovados no GitHub Actions após inclusão do Coordenador e persistência
+- 0 falhas na suíte automatizada
+- GitHub Actions executando em PR/push
+- Coordenador ponta a ponta implementado em primeira versão
+- Estado, evidências e histórico persistidos em SQLite
 
 ## Cobertura atual
 
@@ -82,16 +83,14 @@ Cobrem:
 | Analyze | pergunta, evidência, causa, ferramenta contextual, QA técnico | boa, faltam regressão/teste de hipótese |
 | Improve | solução, piloto, risco, implementação | intermediária |
 | Control | responsável, frequência, reação, sustentação, financeiro, CEP | boa, falta seleção automática de carta |
-| Coordenador | gates isolados | falta orquestração ponta a ponta |
+| Coordenador | orquestração, roteamento contextual, bloqueio de gate e avanço entre fases | primeira versão implementada e testada |
 
 ## Lacunas obrigatórias antes da homologação integrada
 
-1. **Coordenador ponta a ponta**
-   - receber estado do projeto;
-   - determinar fase;
-   - selecionar ferramenta;
-   - impedir avanço ou liberar com pendências;
-   - preservar histórico e evidências entre fases.
+1. **Integração do Coordenador**
+   - tela beta adicionada ao app;
+   - validar uso manual em projeto real;
+   - migrar persistência de SQLite local para armazenamento durável em nuvem antes de produção.
 
 2. **Sistema de Medição**
    - implementar/validar MSA real quando aplicável;
@@ -133,3 +132,24 @@ Um agente/fase só é considerado homologado quando:
 - passagem de gate é rastreável.
 
 O sistema completo só deve ser chamado de homologado após um projeto atravessar Define → Measure → Analyze → Improve → Control sem intervenção corretiva no comportamento do Coordenador.
+
+
+## Atualização — Coordenador DMAIC
+
+Componentes implementados:
+- `core/dmaic_state.py`: estado estruturado do projeto e fase atual;
+- `core/evidence_registry.py`: evidências com liberação por fase;
+- `core/tool_router.py`: seleção contextual de ferramentas;
+- `core/dmaic_coordinator.py`: avaliação de gate, avanço e histórico;
+- persistência em `dmaic_projects`, `dmaic_evidence` e `dmaic_history`;
+- página **Coordenador DMAIC — beta** no Streamlit.
+
+Comportamentos comprovados:
+- Megatech percorre D→M→A→I→C sem expor evidência futura;
+- Bosch avança de Define e bloqueia em Measure com premissa material conflitante;
+- Planmar bloqueia quando inventário total é usado como baseline de outro indicador;
+- pendências não materiais podem resultar em **Pronto com pendências**;
+- ferramentas são recomendadas por contexto, não por lista fixa.
+
+Limite atual:
+- em ambiente Vercel, o SQLite fica em `/tmp` e não é armazenamento persistente entre instâncias. Para produção será necessário banco durável.
