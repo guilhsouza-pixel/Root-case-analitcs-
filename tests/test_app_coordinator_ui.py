@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from streamlit.testing.v1 import AppTest
+
+APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
 def _assert_no_exceptions(app):
@@ -6,7 +10,7 @@ def _assert_no_exceptions(app):
 
 
 def test_coordinator_page_loads_and_blocks_empty_project():
-    app = AppTest.from_file("app.py", default_timeout=20).run()
+    app = AppTest.from_file(APP_PATH, default_timeout=20).run()
     _assert_no_exceptions(app)
 
     # A navegação lateral deve conter a nova página.
@@ -31,7 +35,7 @@ def test_coordinator_page_loads_and_blocks_empty_project():
 
 
 def test_coordinator_define_form_can_be_saved():
-    app = AppTest.from_file("app.py", default_timeout=20).run()
+    app = AppTest.from_file(APP_PATH, default_timeout=20).run()
     app.sidebar.radio[0].set_value("Coordenador DMAIC")
     app.run()
     _assert_no_exceptions(app)
