@@ -22,6 +22,7 @@ from core.analytics import (
     trend_frame,
 )
 from core.database import Database
+from core.importer import ImportErrorDetail, list_sheets, load_uploaded
 from core.report import build_pdf
 from core.schema import CANONICAL_FIELDS, suggest_mapping
 
@@ -44,25 +45,6 @@ st.markdown(
 
 DB_PATH = Path("/tmp/root_cause_analytics.db") if os.getenv("VERCEL") else Path(__file__).with_name("root_cause_analytics.db")
 db = Database(DB_PATH)
-
-
-def load_uploaded(uploaded, sheet_name=None) -> pd.DataFrame:
-    name = uploaded.name.lower()
-    raw = uploaded.getvalue()
-    if name.endswith(".csv"):
-        for encoding in ("utf-8-sig", "latin-1"):
-            try:
-                return pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding=encoding)
-            except UnicodeDecodeError:
-                continue
-        raise ValueError("Não foi possível identificar a codificação do CSV.")
-    return pd.read_excel(BytesIO(raw), sheet_name=sheet_name or 0)
-
-
-def excel_sheets(uploaded) -> list[str]:
-    if uploaded.name.lower().endswith((".xls", ".xlsx")):
-        return pd.ExcelFile(BytesIO(uploaded.getvalue())).sheet_names
-    return []
 
 
 def mapped_frame(raw: pd.DataFrame, mapping: dict[str, str | None]) -> pd.DataFrame:
@@ -111,12 +93,20 @@ def render_import() -> None:
     if not uploaded:
         st.markdown("Importe sua planilha para iniciar. Os dados permanecem na sessão do aplicativo e não são incorporados ao código.")
         return
-    sheets = excel_sheets(uploaded)
+    try:
+        sheets = list_sheets(uploaded)
+    except ImportErrorDetail as exc:
+        st.warning(f"Não foi possível listar abas automaticamente: {exc}")
+        sheets = []
     sheet = st.selectbox("Aba", sheets) if sheets else None
     try:
         raw = load_uploaded(uploaded, sheet)
-    except Exception as exc:
+    except ImportErrorDetail as exc:
         st.error(f"Não foi possível ler o arquivo: {exc}")
+        st.caption("O importador identifica o formato pelo conteúdo do arquivo, inclusive XLS/XLSX renomeado e exportações HTML/XML.")
+        return
+    except Exception as exc:
+        st.error(f"Erro inesperado ao ler o arquivo: {exc}")
         return
     st.success(f"Arquivo lido: {len(raw):,} linhas × {len(raw.columns)} colunas".replace(",", "."))
     st.dataframe(raw.head(50), use_container_width=True)
