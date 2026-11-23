@@ -74,10 +74,24 @@ class Database:
         allowed = {"ishikawa", "why5", "fmea", "actions", "dmaic", "mappings", "dmaic_projects", "dmaic_evidence", "dmaic_history"}
         if table not in allowed:
             raise ValueError("Tabela inválida")
+
+        if table == "dmaic_projects":
+            order_by = "updated_at DESC"
+        elif table == "dmaic_evidence":
+            order_by = "rowid ASC"
+        elif table == "mappings":
+            order_by = "rowid DESC"
+        else:
+            order_by = "id DESC"
+
         with self.connect() as conn:
             if project and table != "mappings":
-                return pd.read_sql_query(f"SELECT * FROM {table} WHERE project = ? ORDER BY id DESC", conn, params=(project,))
-            return pd.read_sql_query(f"SELECT * FROM {table} ORDER BY rowid DESC", conn)
+                return pd.read_sql_query(
+                    f"SELECT * FROM {table} WHERE project = ? ORDER BY {order_by}",
+                    conn,
+                    params=(project,),
+                )
+            return pd.read_sql_query(f"SELECT * FROM {table} ORDER BY {order_by}", conn)
 
     def save_mapping(self, name: str, mapping: dict[str, str | None]) -> None:
         self.execute(
@@ -130,21 +144,19 @@ class Database:
     def save_evidence_registry(self, project: str, registry) -> None:
         from core.evidence_registry import EvidenceItem
 
+        items = registry.all()
+        for item in items:
+            if not isinstance(item, EvidenceItem):
+                raise TypeError("Registro de evidência inválido.")
+
         with self.connect() as conn:
-            for item in registry.all():
-                if not isinstance(item, EvidenceItem):
-                    raise TypeError("Registro de evidência inválido.")
+            conn.execute("DELETE FROM dmaic_evidence WHERE project=?", (project,))
+            for item in items:
                 conn.execute(
                     """
                     INSERT INTO dmaic_evidence(
                       project, evidence_id, text, classification, available_from_phase, source, metadata
                     ) VALUES(?,?,?,?,?,?,?)
-                    ON CONFLICT(project, evidence_id) DO UPDATE SET
-                      text=excluded.text,
-                      classification=excluded.classification,
-                      available_from_phase=excluded.available_from_phase,
-                      source=excluded.source,
-                      metadata=excluded.metadata
                     """,
                     (
                         project,
