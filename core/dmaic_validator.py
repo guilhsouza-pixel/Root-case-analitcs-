@@ -121,6 +121,38 @@ def validate_baseline_alignment(payload: dict) -> list[GateFinding]:
     return []
 
 
+
+
+def validate_statistical_governance(payload: dict) -> list[GateFinding]:
+    findings: list[GateFinding] = []
+    if payload.get("capability_claimed"):
+        if not payload.get("process_stability_checked"):
+            findings.append(GateFinding(
+                "CAPABILITY_WITHOUT_STABILITY",
+                "BLOCKER",
+                "Cp/Cpk não devem sustentar decisão de capacidade sem verificação prévia da estabilidade do processo.",
+            ))
+        if not payload.get("specification_limits_source"):
+            findings.append(GateFinding(
+                "SPEC_LIMITS_UNVERIFIED",
+                "BLOCKER",
+                "Limites de especificação usados em Cp/Cpk precisam de fonte/requisito válido; não podem ser inferidos dos dados observados.",
+            ))
+        if payload.get("spec_limits_from_observed_min_max"):
+            findings.append(GateFinding(
+                "OBSERVED_RANGE_USED_AS_SPEC",
+                "BLOCKER",
+                "Mínimo e máximo observados não são limites de especificação.",
+            ))
+    if payload.get("control_chart_claimed") and not payload.get("control_chart_method"):
+        findings.append(GateFinding(
+            "CONTROL_CHART_METHOD_REQUIRED",
+            "BLOCKER",
+            "Uma conclusão de estabilidade por CEP precisa registrar o tipo de carta e sua adequação ao dado/amostragem.",
+        ))
+    return findings
+
+
 def validate_cause(cause: dict) -> list[GateFinding]:
     findings: list[GateFinding] = []
     status = str(cause.get("status", "HIPÓTESE")).upper().strip()
@@ -144,6 +176,7 @@ def validate_phase(phase: str, payload: dict) -> GateResult:
     findings.extend(validate_premise_conflicts(payload.get("premise_conflicts", [])))
     findings.extend(validate_indicator_role(payload))
     findings.extend(validate_baseline_alignment(payload))
+    findings.extend(validate_statistical_governance(payload))
     for cause in payload.get("causes", []):
         findings.extend(validate_cause(cause))
 
