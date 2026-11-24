@@ -1,6 +1,8 @@
+import pytest
+
 from core.database import Database
 from core.dmaic_coordinator import DMAICCoordinator
-from core.dmaic_state import ProjectState
+from core.dmaic_state import PHASES, ProjectState
 from core.evidence_registry import EvidenceItem, EvidenceRegistry
 
 
@@ -117,6 +119,35 @@ def test_new_coordinator_can_resume_persisted_project(tmp_path):
     assert result.phase == "MEASURE"
     assert result.status == "READY"
     assert result.visible_evidence_ids == ["D1", "M1"]
+
+
+@pytest.mark.parametrize("legacy_completion", [False, True], ids=["new", "legacy"])
+def test_control_completion_is_persisted_once_after_reload(tmp_path, legacy_completion):
+    db = Database(tmp_path / "dmaic.db")
+    state = ProjectState(
+        "Encerramento", phase="CONTROL", completed_phases=list(PHASES[:-1])
+    )
+    state.update_payload({
+        "control_indicator": "ocorrências",
+        "owner": "operação",
+        "frequency": "semanal",
+        "reaction_plan": "revisar registros em caso de desvio",
+    })
+    db.save_project_state(state)
+    stale_state = db.load_project_state(state.project)
+    if legacy_completion:
+        db.append_coordinator_history(
+            state.project, "CONTROL", "dmaic_completed", {"status": "READY"}
+        )
+        assert db.load_project_state(state.project).completed_phases == list(PHASES)
+
+    for snapshot in (state, stale_state, db.load_project_state(state.project)):
+        result = DMAICCoordinator(snapshot, store=db).advance()
+        assert result.status == "READY"
+        assert db.load_project_state(state.project).completed_phases == list(PHASES)
+
+    history = db.dataframe("dmaic_history", state.project)
+    assert (history["event"] == "dmaic_completed").sum() == 1
 
 
 def test_dataframe_supports_new_tables_without_id_column(tmp_path):

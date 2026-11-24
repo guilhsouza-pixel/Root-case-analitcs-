@@ -129,16 +129,29 @@ class Database:
 
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT project, phase, phase_payloads, completed_phases FROM dmaic_projects WHERE project=?",
+                """
+                SELECT p.project, p.phase, p.phase_payloads, p.completed_phases,
+                  EXISTS (
+                    SELECT 1 FROM dmaic_history h
+                    WHERE h.project=p.project AND h.phase=p.phase
+                      AND h.event='dmaic_completed' AND p.phase='CONTROL'
+                  ) AS completion_recorded
+                FROM dmaic_projects p WHERE p.project=?
+                """,
                 (project,),
             ).fetchone()
         if row is None:
             return None
+
+        completed_phases = json.loads(row["completed_phases"])
+        if row["completion_recorded"] and row["phase"] not in completed_phases:
+            completed_phases.append(row["phase"])
+
         return ProjectState(
             project=row["project"],
             phase=row["phase"],
             phase_payloads=json.loads(row["phase_payloads"]),
-            completed_phases=json.loads(row["completed_phases"]),
+            completed_phases=completed_phases,
         )
 
     def save_evidence_registry(self, project: str, registry) -> None:
@@ -197,6 +210,13 @@ class Database:
 
     def append_coordinator_history(self, project: str, phase: str, event: str, details: dict) -> None:
         self.execute(
-            "INSERT INTO dmaic_history(project, phase, event, details) VALUES(?,?,?,?)",
-            (project, phase, event, json.dumps(details, ensure_ascii=False)),
+            """
+            INSERT INTO dmaic_history(project, phase, event, details)
+            SELECT ?, ?, ?, ?
+            WHERE ? != 'dmaic_completed' OR NOT EXISTS (
+              SELECT 1 FROM dmaic_history
+              WHERE project=? AND phase=? AND event='dmaic_completed'
+            )
+            """,
+            (project, phase, event, json.dumps(details, ensure_ascii=False), event, project, phase),
         )

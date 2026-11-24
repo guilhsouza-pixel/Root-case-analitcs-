@@ -108,8 +108,10 @@ class DMAICCoordinator:
             return result
 
         if result.next_phase is None:
-            self._record("dmaic_completed", status=result.status)
-            self._persist()
+            if self.state.phase not in self.state.completed_phases:
+                self._record("dmaic_completed", status=result.status)
+                self.state.completed_phases.append(self.state.phase)
+                self._persist()
             return result
 
         previous_phase = self.state.phase

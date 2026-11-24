@@ -553,11 +553,14 @@ def render_dmaic_coordinator(project: str) -> None:
     evidence = db.load_evidence_registry(project)
     phase = state.phase
     payload = state.payload()
+    control_completed = phase == "CONTROL" and phase in state.completed_phases
 
     a, b, c = st.columns(3)
     a.metric("Fase atual", phase)
     b.metric("Fases concluídas", len(state.completed_phases))
     c.metric("Evidências cadastradas", len(evidence.all()))
+    if control_completed:
+        st.success("Encerramento DMAIC registrado.")
 
     with st.expander("1. Dados estruturados da fase", expanded=True):
         with st.form(f"coordinator_phase_{phase}"):
@@ -695,7 +698,7 @@ def render_dmaic_coordinator(project: str) -> None:
 
         if last_result.next_phase:
             st.caption(f"Próxima fase possível: {last_result.next_phase}")
-        elif phase == "CONTROL" and last_result.status != "BLOCKED":
+        elif phase == "CONTROL" and not last_result.blocked and not control_completed:
             st.caption("Control atende ao gate atual; o projeto pode seguir para encerramento/validação aplicável.")
 
 

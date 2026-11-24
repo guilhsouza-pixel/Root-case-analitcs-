@@ -229,4 +229,8 @@ def test_control_completion_has_no_next_phase_and_records_completion():
 
     assert result.status == "READY"
     assert result.next_phase is None
-    assert any(item["event"] == "dmaic_completed" for item in state.history)
+    assert state.completed_phases == ["CONTROL"]
+
+    coordinator.advance()
+    assert state.completed_phases == ["CONTROL"]
+    assert sum(item["event"] == "dmaic_completed" for item in state.history) == 1
